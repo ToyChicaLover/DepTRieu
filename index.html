@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinese Pronunciation Practice</title>
+    <title>Chinese Pronunciation Auto-Advance</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -22,36 +22,47 @@
         }
         h1 {
             text-align: center;
-            color: #d93025; /* Đổi sang tông đỏ cho phù hợp chủ đề tiếng Trung */
+            color: #d93025;
             font-size: 24px;
         }
-        .exercise-selector {
+        .progress-indicator {
+            text-align: center;
+            font-weight: bold;
+            color: #64748b;
             margin-bottom: 20px;
-        }
-        select {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #cbd5e1;
             font-size: 16px;
+            padding: 5px 15px;
+            background: #f1f5f9;
+            border-radius: 20px;
+            display: inline-block;
         }
+        .text-center { text-align: center; }
+        
         .target-box {
             background: #e2e8f0;
             padding: 20px;
             border-radius: 8px;
             text-align: center;
             margin-bottom: 20px;
+            transition: opacity 0.3s ease;
         }
         .chinese-text {
-            font-size: 28px;
+            font-size: 36px;
             font-weight: bold;
             color: #1e293b;
             margin-bottom: 5px;
+            letter-spacing: 2px;
         }
         .pinyin-text {
             font-size: 18px;
             color: #475569;
             font-style: italic;
+        }
+        .meaning-text {
+            font-size: 16px;
+            color: #0f172a;
+            margin-top: 10px;
+            font-weight: 500;
         }
         .controls {
             text-align: center;
@@ -60,8 +71,8 @@
             background-color: #d93025;
             color: white;
             border: none;
-            padding: 12px 24px;
-            font-size: 16px;
+            padding: 12px 30px;
+            font-size: 18px;
             border-radius: 50px;
             cursor: pointer;
             transition: background 0.3s ease;
@@ -105,20 +116,16 @@
 <body>
 
 <div class="container">
-    <h1>Luyện Phát Âm Tiếng Trung (Giản Thể)</h1>
+    <h1>Luyện Phát Âm Tiếng Trung</h1>
     
-    <div class="exercise-selector">
-        <label for="lesson">Chọn bài tập:</label>
-        <select id="lesson" onchange="changeLesson()">
-            <option value="爸爸，现在几点了？" data-pinyin="Bàba, xiànzài jǐ diǎn le?">Bài 1: Giao tiếp & Gia đình (Bàba, xiànzài jǐ diǎn le?)</option>
-            <option value="那个男孩是谁？" data-pinyin="Nà gè nán hái shì shéi?">Bài 2: Giao tiếp cơ bản (Nà gè nán hái shì shéi?)</option>
-            <option value="我喜欢看仙侠小说。" data-pinyin="Wǒ xǐhuān kàn xiānxiá xiǎoshuō.">Bài 3: Sở thích cá nhân (Wǒ xǐhuān kàn xiānxiá xiǎoshuō.)</option>
-        </select>
+    <div class="text-center">
+        <div class="progress-indicator" id="progressIndicator">Từ vựng: 1 / 5</div>
     </div>
 
-    <div class="target-box">
-        <div class="chinese-text" id="targetText">爸爸，现在几点了？</div>
-        <div class="pinyin-text" id="pinyinText">Bàba, xiànzài jǐ diǎn le?</div>
+    <div class="target-box" id="targetBox">
+        <div class="chinese-text" id="targetText">爸爸</div>
+        <div class="pinyin-text" id="pinyinText">Bàba</div>
+        <div class="meaning-text" id="meaningText">Bố / Cha</div>
     </div>
 
     <div class="controls">
@@ -134,21 +141,35 @@
 </div>
 
 <script>
+    // Kho từ vựng giới hạn 5 từ
+    const vocabBank = [
+        { text: "爸爸", pinyin: "Bàba", meaning: "Bố / Cha" },
+        { text: "现在", pinyin: "Xiànzài", meaning: "Bây giờ" },
+        { text: "是谁", pinyin: "Shì shéi", meaning: "Là ai?" },
+        { text: "修仙", pinyin: "Xiūxiān", meaning: "Tu tiên" },
+        { text: "剑法", pinyin: "Jiànfǎ", meaning: "Kiếm pháp" }
+    ];
+
+    let currentIndex = 0;
+    
+    // Khởi tạo Web Speech API
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
 
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
-        // Thiết lập chuẩn tiếng Trung Quốc (Giản thể)
         recognition.lang = 'zh-CN'; 
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
     } else {
-        alert("Trình duyệt của bạn không hỗ trợ Web Speech API. Vui lòng sử dụng Google Chrome.");
+        alert("Trình duyệt không hỗ trợ Web Speech API. Vui lòng dùng Chrome.");
     }
 
     const targetElement = document.getElementById('targetText');
     const pinyinElement = document.getElementById('pinyinText');
+    const meaningElement = document.getElementById('meaningText');
+    const progressIndicator = document.getElementById('progressIndicator');
+    
     const micBtn = document.getElementById('micBtn');
     const statusText = document.getElementById('statusText');
     const resultArea = document.getElementById('resultArea');
@@ -156,14 +177,20 @@
     const spokenDisplay = document.getElementById('spokenDisplay');
     const feedbackText = document.getElementById('feedbackText');
 
-    function changeLesson() {
-        const lessonSelect = document.getElementById('lesson');
-        const selectedOption = lessonSelect.options[lessonSelect.selectedIndex];
+    // Hàm tải dữ liệu từ vựng lên giao diện
+    function loadCurrentVocab() {
+        targetElement.innerText = vocabBank[currentIndex].text;
+        pinyinElement.innerText = vocabBank[currentIndex].pinyin;
+        meaningElement.innerText = vocabBank[currentIndex].meaning;
+        progressIndicator.innerText = `Từ vựng: ${currentIndex + 1} / ${vocabBank.length}`;
         
-        targetElement.innerText = selectedOption.value;
-        pinyinElement.innerText = selectedOption.getAttribute('data-pinyin');
+        // Reset kết quả
         resultArea.style.display = 'none';
+        statusText.innerText = "Sẵn sàng. Hãy nhấn nút để đọc.";
     }
+
+    // Khởi động từ vựng đầu tiên khi mở web
+    window.onload = loadCurrentVocab;
 
     function startSpeaking() {
         if (!recognition) return;
@@ -171,7 +198,7 @@
         recognition.start();
         micBtn.classList.add('listening');
         micBtn.innerText = "Đang nghe...";
-        statusText.innerText = "Hệ thống đang nghe... Hãy đọc to câu trên.";
+        statusText.innerText = "Hệ thống đang nghe... Hãy đọc to từ trên.";
         resultArea.style.display = 'none';
 
         recognition.onspeechend = function() {
@@ -195,14 +222,12 @@
     }
 
     function evaluatePronunciation(target, spoken) {
-        // Loại bỏ các dấu câu phổ biến của tiếng Trung và tiếng Anh, không có khoảng trắng
         const punctuationRegex = /[.,!?。，！？、\s]/g;
         const cleanTarget = target.replace(punctuationRegex, '').split('');
         const cleanSpoken = spoken.replace(punctuationRegex, '').split('');
 
         let matchCount = 0;
         
-        // So sánh từng chữ Hán
         cleanTarget.forEach(char => {
             const index = cleanSpoken.indexOf(char);
             if (index !== -1) {
@@ -218,17 +243,30 @@
     function displayResults(score, spoken) {
         resultArea.style.display = 'block';
         scoreDisplay.innerText = `Độ chính xác: ${score}%`;
-        spokenDisplay.innerText = `Hệ thống nghe được: "${spoken}"`;
-        statusText.innerText = "Hoàn tất!";
-
+        spokenDisplay.innerText = `Nghe được: "${spoken}"`;
         resultArea.className = 'result-box'; 
 
         if (score >= 90) {
             resultArea.classList.add('feedback-good');
-            feedbackText.innerText = "Rất tốt (很好)! Thanh điệu của bạn rất chuẩn xác.";
+            
+            // Xử lý cơ chế tự động chuyển bài
+            if (currentIndex < vocabBank.length - 1) {
+                feedbackText.innerText = "Chính xác (很好)! Đang tự động chuyển từ sau 2.5 giây...";
+                micBtn.disabled = true; // Khóa nút bấm tạm thời
+                
+                setTimeout(() => {
+                    currentIndex++;
+                    loadCurrentVocab();
+                    micBtn.disabled = false;
+                }, 2500);
+                
+            } else {
+                feedbackText.innerText = "Tuyệt vời! Bạn đã hoàn thành toàn bộ kho từ vựng.";
+            }
+            
         } else if (score >= 60) {
             resultArea.classList.add('feedback-average');
-            feedbackText.innerText = "Khá tốt! Hãy chú ý hơn vào các thanh điệu (dấu) để hệ thống nhận diện đúng chữ Hán.";
+            feedbackText.innerText = "Khá tốt! Hãy chú ý hơn vào các thanh điệu (dấu). Đọc lại để qua bài nhé.";
         } else {
             resultArea.classList.add('feedback-poor');
             feedbackText.innerText = "Cố gắng lên (加油)! Hãy đọc chậm lại và nhấn rõ âm pinyin.";
