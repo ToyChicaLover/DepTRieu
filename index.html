@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinese Pronunciation Auto-Advance</title>
+    <title>Chinese Pronunciation Pro</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -44,7 +44,6 @@
             border-radius: 8px;
             text-align: center;
             margin-bottom: 20px;
-            transition: opacity 0.3s ease;
         }
         .chinese-text {
             font-size: 36px;
@@ -81,6 +80,11 @@
         button:hover {
             background-color: #b31412;
         }
+        button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
         button.listening {
             background-color: #fbbc04;
             color: #000;
@@ -93,13 +97,13 @@
             display: none;
         }
         .score {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
             text-align: center;
             margin-bottom: 10px;
         }
         .spoken-text {
-            font-size: 20px;
+            font-size: 18px;
             color: #475569;
             text-align: center;
         }
@@ -116,7 +120,7 @@
 <body>
 
 <div class="container">
-    <h1>Luyện Phát Âm Tiếng Trung</h1>
+    <h1>Chấm Điểm Phát Âm (Nâng Cao)</h1>
     
     <div class="text-center">
         <div class="progress-indicator" id="progressIndicator">Từ vựng: 1 / 5</div>
@@ -152,7 +156,6 @@
 
     let currentIndex = 0;
     
-    // Khởi tạo Web Speech API
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
 
@@ -177,19 +180,16 @@
     const spokenDisplay = document.getElementById('spokenDisplay');
     const feedbackText = document.getElementById('feedbackText');
 
-    // Hàm tải dữ liệu từ vựng lên giao diện
     function loadCurrentVocab() {
         targetElement.innerText = vocabBank[currentIndex].text;
         pinyinElement.innerText = vocabBank[currentIndex].pinyin;
         meaningElement.innerText = vocabBank[currentIndex].meaning;
         progressIndicator.innerText = `Từ vựng: ${currentIndex + 1} / ${vocabBank.length}`;
         
-        // Reset kết quả
         resultArea.style.display = 'none';
         statusText.innerText = "Sẵn sàng. Hãy nhấn nút để đọc.";
     }
 
-    // Khởi động từ vựng đầu tiên khi mở web
     window.onload = loadCurrentVocab;
 
     function startSpeaking() {
@@ -198,78 +198,114 @@
         recognition.start();
         micBtn.classList.add('listening');
         micBtn.innerText = "Đang nghe...";
-        statusText.innerText = "Hệ thống đang nghe... Hãy đọc to từ trên.";
+        statusText.innerText = "Hãy đọc to từ trên.";
         resultArea.style.display = 'none';
 
         recognition.onspeechend = function() {
             recognition.stop();
             micBtn.classList.remove('listening');
             micBtn.innerText = "🎤 Bắt đầu đọc";
-            statusText.innerText = "Đang xử lý dữ liệu...";
+            statusText.innerText = "Đang phân tích phổ giọng...";
         }
 
         recognition.onresult = function(event) {
             const spokenSentence = event.results[0][0].transcript;
+            const confidence = event.results[0][0].confidence; // Lấy độ tự tin của AI (0.0 đến 1.0)
             const targetSentence = targetElement.innerText;
-            evaluatePronunciation(targetSentence, spokenSentence);
+            
+            evaluatePronunciation(targetSentence, spokenSentence, confidence);
         }
 
         recognition.onerror = function(event) {
             micBtn.classList.remove('listening');
             micBtn.innerText = "🎤 Bắt đầu đọc";
-            statusText.innerText = "Lỗi micro: " + event.error;
+            statusText.innerText = "Lỗi: " + event.error + " (Kiểm tra lại micro)";
         }
     }
 
-    function evaluatePronunciation(target, spoken) {
-        const punctuationRegex = /[.,!?。，！？、\s]/g;
-        const cleanTarget = target.replace(punctuationRegex, '').split('');
-        const cleanSpoken = spoken.replace(punctuationRegex, '').split('');
-
-        let matchCount = 0;
-        
-        cleanTarget.forEach(char => {
-            const index = cleanSpoken.indexOf(char);
-            if (index !== -1) {
-                matchCount++;
-                cleanSpoken.splice(index, 1);
+    // Thuật toán đo khoảng cách Levenshtein
+    function levenshteinDistance(a, b) {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+        const matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                    );
+                }
             }
-        });
+        }
+        return matrix[b.length][a.length];
+    }
 
-        const score = Math.round((matchCount / cleanTarget.length) * 100);
-        displayResults(score, spoken);
+    // Hàm đánh giá phát âm thông minh
+    function evaluatePronunciation(target, spoken, confidence) {
+        const cleanTarget = target.replace(/[.,!?。，！？、\s]/g, '');
+        const cleanSpoken = spoken.replace(/[.,!?。，！？、\s]/g, '');
+
+        // 1. Tính toán độ giống nhau về mặt văn bản
+        const distance = levenshteinDistance(cleanTarget, cleanSpoken);
+        const maxLen = Math.max(cleanTarget.length, cleanSpoken.length);
+        const textSimilarity = maxLen === 0 ? 100 : ((maxLen - distance) / maxLen) * 100;
+
+        // 2. Nội suy điểm số dựa trên AI Confidence
+        let finalScore = 0;
+        const confPercent = confidence * 100;
+
+        if (textSimilarity === 100) {
+            // Đọc đúng chữ, dao động điểm từ 85 - 100 dựa trên độ rõ ràng
+            finalScore = 85 + (confidence * 15);
+        } else if (textSimilarity > 0) {
+            // Đọc đúng một phần (vd: đúng 1 chữ trong từ 2 chữ)
+            finalScore = (textSimilarity * 0.6) + (confPercent * 0.4);
+        } else {
+            // Đọc sai hoàn toàn thanh điệu dẫn đến chữ khác, nhưng AI vẫn nghe thấy âm thanh
+            // Thưởng một ít điểm nỗ lực dựa trên độ rõ của âm
+            finalScore = confPercent * 0.35; 
+        }
+
+        // Đảm bảo điểm luôn nằm trong khoảng 0 - 100
+        finalScore = Math.min(100, Math.max(0, Math.round(finalScore)));
+        
+        displayResults(finalScore, spoken);
     }
 
     function displayResults(score, spoken) {
         resultArea.style.display = 'block';
-        scoreDisplay.innerText = `Độ chính xác: ${score}%`;
-        spokenDisplay.innerText = `Nghe được: "${spoken}"`;
+        scoreDisplay.innerText = `Điểm: ${score}/100`;
+        spokenDisplay.innerText = `Phân tích nhận diện: "${spoken}"`;
         resultArea.className = 'result-box'; 
 
-        if (score >= 90) {
+        if (score >= 85) {
             resultArea.classList.add('feedback-good');
             
-            // Xử lý cơ chế tự động chuyển bài
             if (currentIndex < vocabBank.length - 1) {
-                feedbackText.innerText = "Chính xác (很好)! Đang tự động chuyển từ sau 2.5 giây...";
-                micBtn.disabled = true; // Khóa nút bấm tạm thời
+                feedbackText.innerText = "Chính xác (很好)! Đang tự động chuyển từ sau 2 giây...";
+                micBtn.disabled = true; 
                 
                 setTimeout(() => {
                     currentIndex++;
                     loadCurrentVocab();
                     micBtn.disabled = false;
-                }, 2500);
+                }, 2000);
                 
             } else {
-                feedbackText.innerText = "Tuyệt vời! Bạn đã hoàn thành toàn bộ kho từ vựng.";
+                feedbackText.innerText = "Xuất sắc! Bạn đã vượt qua tất cả các từ.";
             }
             
-        } else if (score >= 60) {
+        } else if (score >= 50) {
             resultArea.classList.add('feedback-average');
-            feedbackText.innerText = "Khá tốt! Hãy chú ý hơn vào các thanh điệu (dấu). Đọc lại để qua bài nhé.";
+            feedbackText.innerText = "Bạn có âm đúng nhưng chưa rõ hoặc sai thanh điệu. Đọc lại để đạt >85 điểm nhé.";
         } else {
             resultArea.classList.add('feedback-poor');
-            feedbackText.innerText = "Cố gắng lên (加油)! Hãy đọc chậm lại và nhấn rõ âm pinyin.";
+            feedbackText.innerText = "Phát âm chưa chuẩn (加油). Chú ý thanh điệu và đọc chậm lại.";
         }
     }
 </script>
